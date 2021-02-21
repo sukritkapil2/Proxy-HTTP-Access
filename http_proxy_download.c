@@ -10,6 +10,27 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
+// this method searches for the first <img> tag in the main page and returns the logo
+void get_logo_url() {
+    char search_string[5000] = "<noscript><img";
+    char word[5000];
+
+    FILE* fptr;
+    fptr = fopen("index.html", "r");
+
+    while (fscanf(fptr, "%14s", word) != EOF) {
+        if(strcmp(search_string, word) == 0) {
+            fscanf(fptr, "%1000s", word);
+            char logo_url[5000];
+            strncpy(logo_url, word+5, (int)(strlen(word) - 6));
+            printf("Logo URL: %s\n", logo_url);
+            return;
+        }
+    }
+    
+    fclose(fptr);
+}
+
 int main(int argc, char* argv[]) {
     int sock_fd;
     struct sockaddr_in server;
@@ -88,12 +109,18 @@ int main(int argc, char* argv[]) {
     }
 
     fprintf(fptr, "%s\n", final_response);
-    free(final_response);
+    fflush(fptr);
+
+    if(logo != NULL) {
+        get_logo_url();
+    }
 
     fclose(fptr);
     close(sock_fd);
 
     printf("\n[SUCCESS] home page received from the server and saved to file\n");
+
+    free(final_response);
 
     return 0;
 }
