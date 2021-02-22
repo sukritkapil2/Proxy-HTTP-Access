@@ -61,9 +61,13 @@ void download_logo(char* logo_name, char* proxy_server, char* proxy_port, char* 
 
     send(sock_fd, message, strlen(message), 0);
 
+    printf("\n[HEADER]\n%s", message);
+
     char server_response[1024];
     int recv_length;
     int header_flag = 1;
+
+    printf("[FETCHING] logo is being downloaded...\n");
 
     while((recv_length = recv(sock_fd, server_response, 1024, 0)) > 0) {
         if(header_flag == 1) {
@@ -141,7 +145,7 @@ int main(int argc, char* argv[]) {
         printf("\n[ERROR] could not send request to server\n");
         return -1;
     }
-    printf("\n[SUCCESS] request sent to the server\n\n[FETCHING] home page is being fetched...\n");
+    printf("\n[SUCCESS] request sent to the server\n\n[HEADER]\n%s\n[FETCHING] home page is being fetched...\n", message);
 
     char server_response[1024];
     int recv_length;
@@ -156,7 +160,6 @@ int main(int argc, char* argv[]) {
     printf("\n[SUCCESS] home page received from the server and saved to file\n");
 
     if(logo != NULL) {
-        printf("\n[FETCHING] logo is being downloaded...\n");
         download_logo(logo, proxy_server, proxy_port, username, password, auth_str, home_page);
         printf("\n[SUCCESS] logo downloaded successfully\n");
     }
