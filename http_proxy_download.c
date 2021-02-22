@@ -10,32 +10,68 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
+char* base64Encoder(char input_str[], int len_str) {
+    // Character set of base64 encoding scheme 
+    char char_set[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"; 
+      
+    // Resultant string 
+    char *res_str = (char *) malloc(1000 * sizeof(char)); 
+      
+    int index, no_of_bits = 0, padding = 0, val = 0, count = 0, temp; 
+    int i, j, k = 0; 
+    
+    for (i = 0; i < len_str; i += 3) { 
+        val = 0, count = 0, no_of_bits = 0;
+
+        for (j = i; j < len_str && j <= i + 2; j++) { 
+            val = val << 8;  
+            val = val | input_str[j];
+            count++; 
+        } 
+
+        no_of_bits = count * 8;
+        padding = no_of_bits % 3;  
+
+        while (no_of_bits != 0) { 
+            if (no_of_bits >= 6) { 
+                temp = no_of_bits - 6;
+                index = (val >> temp) & 63;  
+                no_of_bits -= 6;          
+            } else { 
+                temp = 6 - no_of_bits;
+                index = (val << temp) & 63;  
+                no_of_bits = 0; 
+            }
+            
+            res_str[k++] = char_set[index]; 
+        } 
+    } 
+  
+    // padding is done here 
+    for (i = 1; i <= padding; i++) { 
+        res_str[k++] = '='; 
+    } 
+    res_str[k] = '\0'; 
+    
+    return res_str;
+}
+
 // this method searches for the first <img> tag in the main page and returns the logo
-void download_logo(char* logo_name, char* proxy_server, char* proxy_port, char* username, char* password, char* auth_str, char* home_page) {
-    char search_string[5000] = "<noscript><img";
+void download_logo(char* logo_name, char* proxy_server, char* proxy_port, char* username, char* password, char* auth_str, char* home_page, char* website) {
+    char search_string[5000] = "<P><IMG";
     char word[5000];
-    char logo_url[5000], host_name[5000];
+    char logo_url[5000];
 
     FILE* fptr;
     fptr = fopen(home_page, "r+b");
 
-    while (fscanf(fptr, "%14s", word) != EOF) {
+    while (fscanf(fptr, "%7s", word) != EOF) {
         if(strcmp(search_string, word) == 0) {
             fscanf(fptr, "%1000s", word);
-            strncpy(logo_url, word+5, (int)(strlen(word) - 6));
+            strncpy(logo_url, word+5, (int)(strlen(word) - 7));
             fclose(fptr);
             break;
         }
-    }
-
-    char* temp_host = strstr(logo_url, "//");
-    char final_logo_url[5000] = "http://";
-    temp_host += 2;
-    strcat(final_logo_url, temp_host);
-
-    for(int i = 0;i < strlen(temp_host); i++) {
-        if(temp_host[i] == '/') break;
-        host_name[i] = temp_host[i];
     }
 
     int sock_fd;
@@ -51,10 +87,12 @@ void download_logo(char* logo_name, char* proxy_server, char* proxy_port, char* 
 
     connect(sock_fd, (struct sockaddr *) &server, sizeof(server));
 
-    char message[8192] = "GET ";
-    strcat(message, final_logo_url);
+    char message[8192] = "GET http://";
+    strcat(message, website);
+    strcat(message, "/");
+    strcat(message, logo_url);
     strcat(message, " HTTP/1.1\r\nHost: ");
-    strcat(message, host_name);
+    strcat(message, website);
     strcat(message, "\r\nProxy-Authorization: Basic ");
     strcat(message, auth_str);
     strcat(message, "\r\nConnection: close\r\n\r\n");
@@ -72,8 +110,9 @@ void download_logo(char* logo_name, char* proxy_server, char* proxy_port, char* 
     while((recv_length = recv(sock_fd, server_response, 1024, 0)) > 0) {
         if(header_flag == 1) {
             char* after_remove_header = strstr(server_response, "\r\n\r\n");
+            int length = recv_length - (after_remove_header - server_response + 4);
             after_remove_header += 4;
-            fwrite(after_remove_header, 1, strlen(after_remove_header)-4, fptr);
+            fwrite(after_remove_header, 1, length, fptr);
         }
         else fwrite(server_response, 1, recv_length, fptr);
         fflush(fptr);
@@ -104,10 +143,14 @@ int main(int argc, char* argv[]) {
 
     fptr = fopen(home_page, "w+b");
 
-    if(logo == NULL) printf("\n[INFO] logo will not be downloaded!\n");
-
     // convert the username:password to base64 encoded string
-    char* auth_str = "Y3NmMzAzOmNzZjMwMw==";
+    char cred[8192];
+
+    strcat(cred, username);
+    strcat(cred, ":");
+    strcat(cred, password);
+
+    char* auth_str = base64Encoder(cred, strlen(cred));
     
     // create the socket
     sock_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -149,19 +192,29 @@ int main(int argc, char* argv[]) {
 
     char server_response[1024];
     int recv_length;
+    int header_flag = 1;
 
     while((recv_length = recv(sock_fd, server_response, 1024, 0)) > 0) {
-        fwrite(server_response, 1, recv_length, fptr);
+        if(header_flag == 1) {
+            char* after_remove_header = strstr(server_response, "\r\n\r\n");
+            int length = recv_length - (after_remove_header - server_response + 4);
+            after_remove_header += 4;
+            fwrite(after_remove_header, 1, length, fptr);
+        }
+        else fwrite(server_response, 1, recv_length, fptr);
         fflush(fptr);
         memset(server_response, 0, 1024);
+        header_flag = 0;
     }
 
 
     printf("\n[SUCCESS] home page received from the server and saved to file\n");
 
-    if(logo != NULL) {
-        download_logo(logo, proxy_server, proxy_port, username, password, auth_str, home_page);
+    if(logo != NULL && strcmp(website, "info.in2p3.fr") == 0) {
+        download_logo(logo, proxy_server, proxy_port, username, password, auth_str, home_page, website);
         printf("\n[SUCCESS] logo downloaded successfully\n");
+    } else {
+        printf("\n[INFO] logo will not be downloaded!\n");
     }
 
     fclose(fptr);
