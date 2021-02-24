@@ -99,7 +99,7 @@ void download_logo(char* logo_name, char* proxy_server, char* proxy_port, char* 
 
     send(sock_fd, message, strlen(message), 0);
 
-    printf("\n[HEADER]\n%s", message);
+    printf("\n[REQUEST HEADER]\n%s", message);
 
     char server_response[1024];
     int recv_length;
@@ -188,7 +188,7 @@ int main(int argc, char* argv[]) {
         printf("\n[ERROR] could not send request to server\n");
         return -1;
     }
-    printf("\n[SUCCESS] request sent to the server\n\n[HEADER]\n%s\n[FETCHING] home page is being fetched...\n", message);
+    printf("\n[SUCCESS] request sent to the server\n\n[REQUEST HEADER]\n%s", message);
 
     char server_response[1024];
     int recv_length;
@@ -196,6 +196,47 @@ int main(int argc, char* argv[]) {
 
     while((recv_length = recv(sock_fd, server_response, 1024, 0)) > 0) {
         if(header_flag == 1) {
+            if(server_response[9] == '3' && server_response[10] == '0') {
+                
+                char* ptr = strstr(server_response, "Location: ");
+                ptr += 10;
+                if(strstr(ptr, "http://") != NULL) {
+                    ptr += 7;
+                }
+                char *secptr = strstr(ptr, "\n");
+                int length = secptr - ptr;
+                char final_url[5000];
+                strncpy(final_url, ptr, length-1);
+                printf("\n[RESPONSE] Status Code: Redirecting to %s ..\n", final_url);
+
+                close(sock_fd);
+
+                sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+                // request header
+                char message[8192] = "GET http://";
+                strcat(message, final_url);
+                strcat(message, " HTTP/1.1\r\nHost: ");
+                strcat(message, website);
+                strcat(message, "\r\nProxy-Authorization: Basic ");
+                strcat(message, auth_str);
+                strcat(message, "\r\nConnection: close\r\n\r\n");
+
+                if(connect(sock_fd, (struct sockaddr *) &server, sizeof(server)) < 0) {
+                    printf("\n[ERROR] could not connect to server\n");
+                    exit(1);
+                }
+
+                if(send(sock_fd, message, strlen(message), 0) < 0) {
+                    printf("\n[ERROR] could not send request to server\n");
+                    return -1;
+                }
+                printf("\n[SUCCESS] request sent to the server\n\n[REQUEST HEADER]\n%s", message);
+
+                continue;
+            }
+            printf("\n[RESPONSE] Status Code: OK\n");
+            printf("\n[FETCHING] home page is being fetched...\n");
             char* after_remove_header = strstr(server_response, "\r\n\r\n");
             int length = recv_length - (after_remove_header - server_response + 4);
             after_remove_header += 4;
